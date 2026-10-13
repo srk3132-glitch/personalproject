@@ -1,0 +1,71 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CodeShield AI</title>
+<style>
+:root{--bg:#0f1419;--card:#18202a;--tx:#e6edf3;--mut:#8b98a5;--hi:#ff5c5c;--me:#f5a524;--lo:#4ea1ff;--ok:#3fb950;--bd:#2a3644}
+@media(prefers-color-scheme:light){:root{--bg:#f6f8fa;--card:#fff;--tx:#1f2328;--mut:#656d76;--bd:#d0d7de}}
+*{box-sizing:border-box}body{margin:0;font:15px system-ui,sans-serif;background:var(--bg);color:var(--tx)}
+header{padding:20px 24px;border-bottom:1px solid var(--bd)}h1{margin:0;font-size:20px}header p{margin:4px 0 0;color:var(--mut)}
+main{max-width:1100px;margin:0 auto;padding:20px;display:grid;gap:16px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:16px}
+.tabs button{background:none;border:0;color:var(--mut);padding:8px 14px;cursor:pointer;font-size:15px;border-bottom:2px solid transparent}
+.tabs button.on{color:var(--tx);border-color:var(--lo)}
+textarea,input,select{width:100%;background:var(--bg);color:var(--tx);border:1px solid var(--bd);border-radius:8px;padding:10px;font:13px ui-monospace,monospace}
+textarea{min-height:200px}.row{display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap}
+.btn{background:var(--lo);color:#fff;border:0;border-radius:8px;padding:10px 18px;cursor:pointer;font-weight:600}.btn.sec{background:none;border:1px solid var(--bd);color:var(--tx)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}.stat b{display:block;font-size:26px}
+.bar{height:8px;border-radius:4px;background:var(--lo);margin:2px 0 8px}
+.f{border-left:4px solid var(--lo)}.f.high{border-color:var(--hi)}.f.medium{border-color:var(--me)}
+.tag{font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid var(--bd);color:var(--mut);margin-left:6px}
+pre{background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:10px;overflow-x:auto;font-size:12.5px;margin:6px 0;white-space:pre-wrap}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:700px){.split{grid-template-columns:1fr}}
+.good{color:var(--ok)}.bad{color:var(--hi)}small,.mut{color:var(--mut)}.hide{display:none}
+</style></head><body>
+<header><h1>CodeShield AI</h1><p>Static scan first, AI second. Your code is analysed, never executed, and not stored.</p><div id="who" class="row hide"><small id="em"></small><button class="btn sec" onclick="logout()">Log out</button></div></header>
+<main>
+<div id="auth" class="card hide"><b>Log in or create an account</b><div class="row"><input id="em_in" type="email" placeholder="Email" style="flex:1"><input id="pw_in" type="password" placeholder="Password (min 8 characters)" style="flex:1"></div><div class="row"><button class="btn" onclick="authgo('login')">Log in</button><button class="btn sec" onclick="authgo('register')">Create account</button><small class="bad" id="auth_err"></small></div></div>
+<div id="appcard" class="card hide"><div class="tabs"><button id="t1" class="on" onclick="tab(1)">Paste code</button><button id="t2" onclick="tab(2)">GitHub repo</button><button id="t3" onclick="tab(3);hist()">History</button></div>
+<div id="p1"><div class="row"><select id="lang" style="width:auto"><option>python</option><option>javascript</option><option>typescript</option><option>java</option><option>php</option><option>go</option></select>
+<label><input type="checkbox" id="ai" checked style="width:auto"> AI triage &amp; patch</label><button class="btn sec" onclick="sample()">Load vulnerable sample</button></div>
+<textarea id="code" placeholder="Paste code here..." style="margin-top:10px"></textarea><div class="row"><button class="btn" onclick="scanCode()">Scan code</button></div></div>
+<div id="p2" class="hide"><div class="row"><input id="repo" placeholder="https://github.com/owner/repo" style="flex:1"><button class="btn" onclick="scanRepo()">Scan repo</button></div><small>Public repos only. Cloned shallowly into a temp folder and deleted after scanning.</small></div>
+<div id="p3" class="hide"><div id="hist"></div></div></div>
+<div id="status" class="mut"></div><div id="out" style="display:grid;gap:12px"></div>
+</main>
+<script>
+const $=id=>document.getElementById(id);let cur=null,filter='all';
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function tab(n){[1,2,3].forEach(i=>{$('p'+i).classList.toggle('hide',i!=n);$('t'+i).classList.toggle('on',i==n)})}
+function sample(){$('code').value=`import sqlite3, os, pickle, hashlib\nAPI_KEY = "sk-live-9f8a7b6c5d4e3f2a1b0c"\n\ndef get_user(email):\n    cur = sqlite3.connect("app.db").cursor()\n    query = "SELECT * FROM users WHERE email = '" + email + "'"\n    cur.execute(query)\n    return cur.fetchone()\n\ndef ping(host):\n    os.system("ping -c 1 " + host)\n\ndef load(blob):\n    return pickle.loads(blob)\n\ndef hash_pw(p):\n    return hashlib.md5(p.encode()).hexdigest()\n`}
+async function call(url,body){$('status').textContent='Scanning... (AI triage can take a few seconds)';$('out').innerHTML='';
+ try{const r=await fetch(url,{method:'POST',headers:hd(),body:JSON.stringify(body)});
+ if(r.status==401)logout();if(!r.ok){throw new Error((await r.json()).detail||r.statusText)}cur=await r.json();$('status').textContent='';render()}
+ catch(e){$('status').textContent='Error: '+e.message}}
+const scanCode=()=>call('/api/scan/code',{code:$('code').value,language:$('lang').value,use_ai:$('ai').checked});
+const scanRepo=()=>call('/api/scan/repo',{url:$('repo').value});
+function render(){const s=cur.summary,mx=Math.max(1,...Object.values(s.types),...Object.values(s.files));
+ const bars=o=>Object.entries(o).map(([k,v])=>`<div><small>${esc(k)} (${v})</small><div class="bar" style="width:${v/mx*100}%"></div></div>`).join('')||'<small>none</small>';
+ const fs=cur.findings.filter(f=>filter=='all'||f.severity==filter);
+ $('out').innerHTML=`<div class="card"><div class="stats"><div class="stat"><small>Risk score</small><b>${s.risk_score}</b></div><div class="stat"><small>Total</small><b>${s.total}</b></div>
+ <div class="stat"><small>High</small><b class="bad">${s.high}</b></div><div class="stat"><small>Medium</small><b style="color:var(--me)">${s.medium}</b></div><div class="stat"><small>Low</small><b style="color:var(--lo)">${s.low}</b></div></div>
+ <div class="split" style="margin-top:14px"><div><b>Vulnerability types</b>${bars(s.types)}</div><div><b>Most affected files</b>${bars(s.files)}</div></div>
+ <div class="row"><select style="width:auto" onchange="filter=this.value;render()">${['all','high','medium','low'].map(x=>`<option ${x==filter?'selected':''}>${x}</option>`).join('')}</select>
+ <button class="btn sec" onclick="dl()">Export Markdown</button><button class="btn sec" onclick="print()">Print / PDF</button><small>Engine: ${esc(s.engine)}</small></div></div>`+
+ fs.map(f=>{const a=f.ai;return `<div class="card f ${f.severity}"><b>${esc(f.rule_id)}</b><span class="tag">${f.severity}</span>${f.cwe?`<span class="tag">${esc(f.cwe)}</span>`:''}
+ ${f.ml_score!=null?`<span class="tag">model: ${(f.ml_score*100).toFixed(0)}% vuln</span>`:''}<div class="mut">${esc(f.file)}:${f.line}</div><p>${esc(f.message)}</p><pre>${esc(f.evidence)}</pre>
+ ${a?`<p><b class="${a.is_likely_vulnerable?'bad':'good'}">${a.is_likely_vulnerable?'Likely vulnerable':'Likely false positive'}</b> <small>(${esc(a.confidence)} confidence)</small></p>
+ <p><b>Impact:</b> ${esc(a.impact)}</p><p><b>Scenario:</b> ${esc(a.exploit_scenario)}</p><p><b>Fix:</b> ${esc(a.remediation)}</p>
+ <div class="split"><div><small>Vulnerable</small><pre>${esc(f.evidence)}</pre></div><div><small>Suggested patch (advisory)</small><pre>${esc(a.patched_code)}</pre></div></div>`:''}</div>`}).join('')}
+async function hist(){const r=await (await fetch('/api/scans',{headers:hd()})).json();$('hist').innerHTML=r.map(x=>`<div class="row"><a href="#" onclick="load('${x.id}');return false">${new Date(x.created*1000).toLocaleString()}</a><small>${esc(x.source)} · ${x.summary.total} findings · risk ${x.summary.risk_score}</small><a href="#" class="bad" onclick="del('${x.id}');return false">delete</a></div>`).join('')||'<small>No scans yet.</small>'}
+async function load(id){cur=await (await fetch('/api/scans/'+id,{headers:hd()})).json();render()}
+
+let tok=localStorage.getItem('cs_tok');
+const hd=()=>({'Content-Type':'application/json',...(tok?{Authorization:'Bearer '+tok}:{})});
+function showApp(e){$('auth').classList.add('hide');$('appcard').classList.remove('hide');$('who').classList.remove('hide');$('em').textContent=e}
+function logout(){tok=null;localStorage.removeItem('cs_tok');localStorage.removeItem('cs_em');$('appcard').classList.add('hide');$('who').classList.add('hide');$('out').innerHTML='';$('auth').classList.remove('hide')}
+async function authgo(k){const r=await fetch('/api/auth/'+k,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:$('em_in').value,password:$('pw_in').value})});
+ let d={};try{d=await r.json()}catch(e){}if(!r.ok){$('auth_err').textContent=(typeof d.detail=='string'?d.detail:'Check your email and use a password of 8+ characters.');return}
+ tok=d.token;localStorage.setItem('cs_tok',tok);localStorage.setItem('cs_em',d.email);$('auth_err').textContent='';showApp(d.email)}
+async function dl(){const r=await fetch('/api/scans/'+cur.id+'/report.md',{headers:hd()});const a=document.createElement('a');a.href=URL.createObjectURL(await r.blob());a.download='codeshield-'+cur.id+'.md';a.click()}
+async function del(id){await fetch('/api/scans/'+id,{method:'DELETE',headers:hd()});hist()}
+tok?showApp(localStorage.getItem('cs_em')||''):logout();
+</script></body></html>
